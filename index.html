@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Camera Overlay</title>
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body { margin: 0; font-family: sans-serif; text-align: center; }
+    video, canvas { width: 100%; max-width: 480px; margin-top: 1em; }
+    #overlayText { position: absolute; color: red; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>Scan QR Code</h2>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" style="display: none;"></canvas>
+  <button onclick="captureImage()">Capture & Overlay</button>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => video.srcObject = stream);
+
+    function captureImage() {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+      if (code) {
+        ctx.font = "20px Arial";
+        ctx.fillStyle = "red";
+        ctx.fillText(code.data, 10, 30);
+        canvas.toBlob(blob => saveImage(blob), 'image/jpeg', 0.95);
+      } else {
+        alert("No QR code detected");
+      }
+    }
+
+    async function saveImage(blob) {
+      const file = new File([blob], "photo.jpg", { type: blob.type });
+      if ('showSaveFilePicker' in window) {
+        const handle = await showSaveFilePicker({
+          suggestedName: 'qr_photo.jpg',
+          types: [{ description: 'JPEG Image', accept: { 'image/jpeg': ['.jpg'] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(file);
+        await writable.close();
+      } else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'qr_photo.jpg';
+        a.click();
+      }
+    }
+  </script>
+</body>
+</html>
