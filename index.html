@@ -111,11 +111,25 @@
       processingCtx.fillText(text, width / 2, height - 10);
 
       processingCanvas.toBlob(blob => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'product_with_qr.jpg';
-        a.click();
+        // Save to device (download or via Web Share if supported)
+        const file = new File([blob], 'product_with_qr.jpg', { type: 'image/jpeg' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: 'Saved Image', text: 'Product photo with QR' })
+            .then(() => initPhotoScreen())
+            .catch(() => downloadBlob(blob));
+        } else {
+          downloadBlob(blob);
+        }
       }, 'image/jpeg', 0.95);
+    }
+
+    function downloadBlob(blob) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'product_with_qr.jpg';
+      a.click();
+      initPhotoScreen();
     }
   </script>
 </body>
