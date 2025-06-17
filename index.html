@@ -3,10 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HYFVE QR Photo App</title>
+  <title>QR Photo App</title>
+  <script type="module">
+    import { BrowserQRCodeReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/esm/index.min.js';
+    window.BrowserQRCodeReader = BrowserQRCodeReader;
+  </script>
   <style>
     body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
-    video, canvas, #qrCanvas { width: 100%; max-width: 480px; margin-top: 1em; border-radius: 8px; }
+    video, canvas { width: 100%; max-width: 480px; margin-top: 1em; border-radius: 8px; }
     #photoScreen, #qrScreen { display: none; flex-direction: column; align-items: center; }
     button { margin: 1em; padding: 0.5em 1em; font-size: 1rem; }
   </style>
@@ -21,19 +25,15 @@
 
   <div id="qrScreen">
     <video id="qrVideo" autoplay playsinline></video>
-    <canvas id="qrCanvas" style="display: none;"></canvas>
     <p>Scanning for QR code...</p>
   </div>
 
   <canvas id="finalCanvas" style="display: none;"></canvas>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
   <script>
     const photoVideo = document.getElementById('photoVideo');
     const qrVideo = document.getElementById('qrVideo');
-    const qrCanvas = document.getElementById('qrCanvas');
     const finalCanvas = document.getElementById('finalCanvas');
-    const qrCtx = qrCanvas.getContext('2d');
     const finalCtx = finalCanvas.getContext('2d');
 
     let capturedImage = null;
@@ -56,25 +56,17 @@
       document.getElementById('photoScreen').style.display = 'none';
       document.getElementById('qrScreen').style.display = 'flex';
 
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(stream => {
-        qrVideo.srcObject = stream;
-        scanLoop();
-      });
+      startQRScanner();
     }
 
-    function scanLoop() {
-      qrCanvas.width = qrVideo.videoWidth;
-      qrCanvas.height = qrVideo.videoHeight;
-      qrCtx.drawImage(qrVideo, 0, 0, qrCanvas.width, qrCanvas.height);
-
-      const imageData = qrCtx.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
-      const code = jsQR(imageData.data, qrCanvas.width, qrCanvas.height);
-
-      if (code) {
-        overlayTextAndSave(code.data);
-      } else {
-        requestAnimationFrame(scanLoop);
-      }
+    async function startQRScanner() {
+      const codeReader = new BrowserQRCodeReader();
+      const result = await codeReader.decodeFromVideoDevice(null, 'qrVideo', (result, err, controls) => {
+        if (result) {
+          controls.stop();
+          overlayTextAndSave(result.getText());
+        }
+      });
     }
 
     function overlayTextAndSave(text) {
@@ -82,7 +74,7 @@
       finalCanvas.height = capturedImage.height;
       finalCtx.drawImage(capturedImage, 0, 0);
 
-      // Draw overlay at bottom
+      // Draw overlay box at bottom
       finalCtx.fillStyle = 'rgba(0,0,0,0.7)';
       finalCtx.fillRect(0, finalCanvas.height - 40, finalCanvas.width, 40);
       finalCtx.font = '24px sans-serif';
