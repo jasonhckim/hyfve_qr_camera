@@ -1,63 +1,101 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QR Camera Overlay</title>
-  <link rel="manifest" href="manifest.json" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HYFVE QR Photo App</title>
   <style>
-    body { margin: 0; font-family: sans-serif; text-align: center; }
-    video, canvas { width: 100%; max-width: 480px; margin-top: 1em; }
-    #overlayText { position: absolute; color: red; font-weight: bold; }
+    body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+    video, canvas, #qrCanvas { width: 100%; max-width: 480px; margin-top: 1em; border-radius: 8px; }
+    #photoScreen, #qrScreen { display: none; flex-direction: column; align-items: center; }
+    button { margin: 1em; padding: 0.5em 1em; font-size: 1rem; }
   </style>
 </head>
 <body>
-  <h2>Scan QR Code</h2>
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas" style="display: none;"></canvas>
-  <button onclick="captureImage()">Capture & Overlay</button>
+  <h2>QR Photo App</h2>
+
+  <div id="photoScreen">
+    <video id="photoVideo" autoplay playsinline></video>
+    <button onclick="takePhoto()">📸 Take Photo</button>
+  </div>
+
+  <div id="qrScreen">
+    <video id="qrVideo" autoplay playsinline></video>
+    <canvas id="qrCanvas" style="display: none;"></canvas>
+    <p>Scanning for QR code...</p>
+  </div>
+
+  <canvas id="finalCanvas" style="display: none;"></canvas>
+
   <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+    const photoVideo = document.getElementById('photoVideo');
+    const qrVideo = document.getElementById('qrVideo');
+    const qrCanvas = document.getElementById('qrCanvas');
+    const finalCanvas = document.getElementById('finalCanvas');
+    const qrCtx = qrCanvas.getContext('2d');
+    const finalCtx = finalCanvas.getContext('2d');
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then(stream => video.srcObject = stream);
+    let capturedImage = null;
 
-    function captureImage() {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height);
+    // Show photo screen on load
+    document.getElementById('photoScreen').style.display = 'flex';
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(stream => {
+      photoVideo.srcObject = stream;
+    });
+
+    function takePhoto() {
+      const canvas = document.createElement('canvas');
+      canvas.width = photoVideo.videoWidth;
+      canvas.height = photoVideo.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(photoVideo, 0, 0, canvas.width, canvas.height);
+      capturedImage = canvas;
+
+      // Switch to QR screen
+      document.getElementById('photoScreen').style.display = 'none';
+      document.getElementById('qrScreen').style.display = 'flex';
+
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(stream => {
+        qrVideo.srcObject = stream;
+        scanLoop();
+      });
+    }
+
+    function scanLoop() {
+      qrCanvas.width = qrVideo.videoWidth;
+      qrCanvas.height = qrVideo.videoHeight;
+      qrCtx.drawImage(qrVideo, 0, 0, qrCanvas.width, qrCanvas.height);
+
+      const imageData = qrCtx.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
+      const code = jsQR(imageData.data, qrCanvas.width, qrCanvas.height);
 
       if (code) {
-        ctx.font = "20px Arial";
-        ctx.fillStyle = "red";
-        ctx.fillText(code.data, 10, 30);
-        canvas.toBlob(blob => saveImage(blob), 'image/jpeg', 0.95);
+        overlayTextAndSave(code.data);
       } else {
-        alert("No QR code detected");
+        requestAnimationFrame(scanLoop);
       }
     }
 
-    async function saveImage(blob) {
-      const file = new File([blob], "photo.jpg", { type: blob.type });
-      if ('showSaveFilePicker' in window) {
-        const handle = await showSaveFilePicker({
-          suggestedName: 'qr_photo.jpg',
-          types: [{ description: 'JPEG Image', accept: { 'image/jpeg': ['.jpg'] } }]
-        });
-        const writable = await handle.createWritable();
-        await writable.write(file);
-        await writable.close();
-      } else {
+    function overlayTextAndSave(text) {
+      finalCanvas.width = capturedImage.width;
+      finalCanvas.height = capturedImage.height;
+      finalCtx.drawImage(capturedImage, 0, 0);
+
+      // Draw overlay at bottom
+      finalCtx.fillStyle = 'rgba(0,0,0,0.7)';
+      finalCtx.fillRect(0, finalCanvas.height - 40, finalCanvas.width, 40);
+      finalCtx.font = '24px sans-serif';
+      finalCtx.fillStyle = 'white';
+      finalCtx.textAlign = 'center';
+      finalCtx.fillText(text, finalCanvas.width / 2, finalCanvas.height - 10);
+
+      finalCanvas.toBlob(blob => {
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = 'qr_photo.jpg';
         a.click();
-      }
+      }, 'image/jpeg', 0.95);
     }
   </script>
 </body>
