@@ -101,7 +101,7 @@
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imageData.data, canvas.width, canvas.height);
 
-        if (code) {
+        if (code && code.location) {
             const loc = code.location;
             qrOverlayCtx.strokeStyle = 'lime';
             qrOverlayCtx.lineWidth = 4;
@@ -115,10 +115,10 @@
 
             if (!autoScanTimeout) {
             autoScanTimeout = setTimeout(() => {
-                qrVideo.srcObject.getTracks().forEach(track => track.stop());
                 scanning = false;
+                qrVideo.srcObject?.getTracks().forEach(track => track.stop());
                 overlayTextAndSave(code.data);
-            }, 1000);
+                }, 1000);
             }
         } else {
             clearTimeout(autoScanTimeout);
@@ -126,7 +126,8 @@
         }
 
         requestAnimationFrame(scanLoop);
-        }
+    }
+
 
 
     function captureQRFrame() {
