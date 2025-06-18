@@ -200,41 +200,39 @@
     }
 
     function overlayTextAndSave(text) {
-      const width = capturedImageBitmap.width;
-      const height = capturedImageBitmap.height;
-      processingCanvas.width = width;
-      processingCanvas.height = height;
-      processingCtx.drawImage(capturedImageBitmap, 0, 0);
+        const width = capturedImageBitmap.width;
+        const height = capturedImageBitmap.height;
+        processingCanvas.width = width;
+        processingCanvas.height = height;
+        processingCtx.drawImage(capturedImageBitmap, 0, 0);
 
-      processingCtx.fillStyle = 'rgba(0,0,0,0.7)';
-      processingCtx.fillRect(0, height - 40, width, 40);
-      processingCtx.font = '24px sans-serif';
-      processingCtx.fillStyle = 'white';
-      processingCtx.textAlign = 'center';
-      processingCtx.fillText(text, width / 2, height - 10);
+        processingCtx.fillStyle = 'rgba(0,0,0,0.7)';
+        processingCtx.fillRect(0, height - 40, width, 40);
+        processingCtx.font = '24px sans-serif';
+        processingCtx.fillStyle = 'white';
+        processingCtx.textAlign = 'center';
+        processingCtx.fillText(text, width / 2, height - 10);
 
-      processingCanvas.toBlob(blob => {
-        latestBlob = blob;
-        saveBtn.style.display = 'block';
+        processingCanvas.toBlob(blob => {
+            latestBlob = blob;
 
-        // Save on click
-        saveBtn.onclick = () => {
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(latestBlob);
-          a.download = 'product_with_qr.jpg';
-          a.click();
-        };
+            // 👇 Immediately trigger download (like the manual workflow you like)
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'product_with_qr.jpg';
+            a.click();
 
-        const file = new File([blob], 'product_with_qr.jpg', { type: 'image/jpeg' });
-
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          navigator.share({ files: [file], title: 'Saved Image', text: 'Product photo with QR' })
-            .catch(() => {
-              // user cancelled, no need to fallback — button is shown
-            });
-        }
-      }, 'image/jpeg', 0.95);
+            // ✅ Also show Save to Device button in case user wants it again
+            saveBtn.style.display = 'block';
+            saveBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(latestBlob);
+                a.download = 'product_with_qr.jpg';
+                a.click();
+            };
+        }, 'image/jpeg', 0.95);
     }
+
   </script>
 </body>
 </html>
