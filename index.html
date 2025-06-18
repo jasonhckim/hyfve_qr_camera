@@ -49,6 +49,7 @@
       <div class="scan-frame"></div>
     </div>
     <button onclick="captureQRFrame()">Scan QR Now</button>
+    <button id="saveButton" style="display: none;">💾 Save to Device</button>
     <p>Align QR code inside the red box</p>
   </div>
 
@@ -61,17 +62,20 @@
     const qrOverlayCtx = qrOverlay.getContext('2d');
     const processingCanvas = document.getElementById('processingCanvas');
     const processingCtx = processingCanvas.getContext('2d');
+    const saveBtn = document.getElementById('saveButton');
 
     let capturedImageBlob = null;
     let capturedImageBitmap = null;
     let autoScanTimeout = null;
     let scanning = false;
     let animationId;
+    let latestBlob = null;
 
     async function initPhotoScreen() {
       clearTimeout(autoScanTimeout);
       cancelAnimationFrame(animationId);
       scanning = false;
+      saveBtn.style.display = 'none';
 
       document.getElementById('photoScreen').style.display = 'flex';
       document.getElementById('qrScreen').style.display = 'none';
@@ -210,24 +214,26 @@
       processingCtx.fillText(text, width / 2, height - 10);
 
       processingCanvas.toBlob(blob => {
+        latestBlob = blob;
+        saveBtn.style.display = 'block';
+
+        // Save on click
+        saveBtn.onclick = () => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(latestBlob);
+          a.download = 'product_with_qr.jpg';
+          a.click();
+        };
+
         const file = new File([blob], 'product_with_qr.jpg', { type: 'image/jpeg' });
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           navigator.share({ files: [file], title: 'Saved Image', text: 'Product photo with QR' })
-            .then(() => initPhotoScreen())
-            .catch(() => downloadBlob(blob));
-        } else {
-          downloadBlob(blob);
+            .catch(() => {
+              // user cancelled, no need to fallback — button is shown
+            });
         }
       }, 'image/jpeg', 0.95);
-    }
-
-    function downloadBlob(blob) {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'product_with_qr.jpg';
-      a.click();
-      initPhotoScreen();
     }
   </script>
 </body>
