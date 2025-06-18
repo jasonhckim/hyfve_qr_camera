@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>HYFVE QR Photo Overlay</title>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <style>
@@ -10,7 +10,27 @@
     video { width: 100%; max-width: 480px; border-radius: 8px; margin-top: 1em; }
     #photoScreen, #qrScreen { display: none; flex-direction: column; align-items: center; width: 100%; position: relative; }
     canvas.overlay { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10; }
-    button { margin: 1em; padding: 0.75em 1.5em; font-size: 1rem; border: none; border-radius: 6px; background: #111; color: white; cursor: pointer; }
+    .scan-frame {
+      position: absolute;
+      border: 3px dashed red;
+      width: 60%;
+      height: 40%;
+      top: 30%;
+      left: 20%;
+      z-index: 11;
+      pointer-events: none;
+      box-sizing: border-box;
+    }
+    button {
+      margin: 1em;
+      padding: 0.75em 1.5em;
+      font-size: 1rem;
+      border: none;
+      border-radius: 6px;
+      background: #111;
+      color: white;
+      cursor: pointer;
+    }
     button:hover { background: #333; }
   </style>
 </head>
@@ -26,9 +46,10 @@
     <div style="position: relative; width: 100%; max-width: 480px;">
       <video id="qrVideo" autoplay playsinline></video>
       <canvas id="qrOverlay" class="overlay"></canvas>
+      <div class="scan-frame"></div>
     </div>
     <button onclick="captureQRFrame()">Scan QR Now</button>
-    <p>Align QR code and tap "Scan QR Now" if not auto-detected</p>
+    <p>Align QR code inside the red box</p>
   </div>
 
   <canvas id="processingCanvas" style="display: none;"></canvas>
@@ -45,10 +66,16 @@
     let capturedImageBitmap = null;
     let autoScanTimeout = null;
     let scanning = false;
+    let animationId;
 
     async function initPhotoScreen() {
+      clearTimeout(autoScanTimeout);
+      cancelAnimationFrame(animationId);
+      scanning = false;
+
       document.getElementById('photoScreen').style.display = 'flex';
       document.getElementById('qrScreen').style.display = 'none';
+
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       photoVideo.srcObject = stream;
     }
@@ -81,8 +108,30 @@
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       qrVideo.srcObject = stream;
 
+      // Zoom support
+      const [track] = stream.getVideoTracks();
+      const capabilities = track.getCapabilities();
+      if (capabilities.zoom) {
+        const zoomVal = capabilities.zoom.max > 2 ? 2 : capabilities.zoom.max;
+        await track.applyConstraints({ advanced: [{ zoom: zoomVal }] });
+      }
+
       scanning = true;
-      requestAnimationFrame(scanLoop);
+      scanLoop();
+    }
+
+    function isQRInScanFrame(location, width, height) {
+      const scanBox = {
+        left: width * 0.2,
+        right: width * 0.8,
+        top: height * 0.3,
+        bottom: height * 0.7
+      };
+      const { topLeftCorner, bottomRightCorner } = location;
+      return topLeftCorner.x > scanBox.left &&
+             topLeftCorner.y > scanBox.top &&
+             bottomRightCorner.x < scanBox.right &&
+             bottomRightCorner.y < scanBox.bottom;
     }
 
     function scanLoop() {
@@ -101,7 +150,7 @@
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(imageData.data, canvas.width, canvas.height);
 
-      if (code) {
+      if (code && isQRInScanFrame(code.location, canvas.width, canvas.height)) {
         const { topLeftCorner, bottomRightCorner } = code.location;
         qrOverlayCtx.strokeStyle = 'lime';
         qrOverlayCtx.lineWidth = 4;
@@ -124,7 +173,7 @@
         autoScanTimeout = null;
       }
 
-      requestAnimationFrame(scanLoop);
+      animationId = requestAnimationFrame(scanLoop);
     }
 
     function captureQRFrame() {
@@ -137,12 +186,12 @@
       const imageData = ctx.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
       const code = jsQR(imageData.data, qrCanvas.width, qrCanvas.height);
 
-      if (code) {
+      if (code && isQRInScanFrame(code.location, qrCanvas.width, qrCanvas.height)) {
         qrVideo.srcObject.getTracks().forEach(track => track.stop());
         scanning = false;
         overlayTextAndSave(code.data);
       } else {
-        alert('No QR code found — try again.');
+        alert('No QR code inside the red box — try again.');
       }
     }
 
