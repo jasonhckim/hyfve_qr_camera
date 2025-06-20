@@ -24,6 +24,25 @@
       flex-direction: column;
       align-items: center;
       width: 100%;
+      position: relative;
+    }
+    canvas.overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .scan-frame {
+      position: absolute;
+      border: 3px dashed red;
+      width: 60%;
+      height: 40%;
+      top: 30%;
+      left: 20%;
+      z-index: 11;
+      pointer-events: none;
+      box-sizing: border-box;
     }
     button {
       margin: 1em;
@@ -49,9 +68,13 @@
   </div>
 
   <div id="qrScreen">
-    <video id="qrVideo" autoplay playsinline></video>
+    <div style="position: relative; width: 100%; max-width: 480px;">
+      <video id="qrVideo" autoplay playsinline></video>
+      <canvas id="qrOverlay" class="overlay"></canvas>
+      <div class="scan-frame"></div>
+    </div>
     <button onclick="captureQRFrame()">Scan QR Now</button>
-    <p>Align QR code and tap "Scan QR Now"</p>
+    <p>Align QR code inside the red box</p>
   </div>
 
   <canvas id="processingCanvas" style="display: none;"></canvas>
@@ -59,14 +82,24 @@
   <script>
     const photoVideo = document.getElementById('photoVideo');
     const qrVideo = document.getElementById('qrVideo');
+    const qrOverlay = document.getElementById('qrOverlay');
+    const qrOverlayCtx = qrOverlay.getContext('2d');
     const processingCanvas = document.getElementById('processingCanvas');
     const processingCtx = processingCanvas.getContext('2d');
 
     let capturedImageBitmap = null;
+    let scanning = false;
+    let autoScanTimeout = null;
+    let animationId;
 
     async function initPhotoScreen() {
+      clearTimeout(autoScanTimeout);
+      cancelAnimationFrame(animationId);
+      scanning = false;
+
       document.getElementById('photoScreen').style.display = 'flex';
       document.getElementById('qrScreen').style.display = 'none';
+
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       photoVideo.srcObject = stream;
     }
@@ -96,8 +129,79 @@
     async function startQRScan() {
       document.getElementById('photoScreen').style.display = 'none';
       document.getElementById('qrScreen').style.display = 'flex';
+
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       qrVideo.srcObject = stream;
+
+      // Apply zoom if supported
+      const [track] = stream.getVideoTracks();
+      const capabilities = track.getCapabilities();
+      if (capabilities.zoom) {
+        const zoomVal = capabilities.zoom.max > 2 ? 2 : capabilities.zoom.max;
+        await track.applyConstraints({ advanced: [{ zoom: zoomVal }] });
+      }
+
+      scanning = true;
+      scanLoop();
+    }
+
+    function isQRInScanFrame(location, width, height) {
+      const scanBox = {
+        left: width * 0.2,
+        right: width * 0.8,
+        top: height * 0.3,
+        bottom: height * 0.7
+      };
+      const { topLeftCorner, bottomRightCorner } = location;
+      return topLeftCorner.x > scanBox.left &&
+             topLeftCorner.y > scanBox.top &&
+             bottomRightCorner.x < scanBox.right &&
+             bottomRightCorner.y < scanBox.bottom;
+    }
+
+    function scanLoop() {
+      if (!scanning) return;
+
+      qrOverlay.width = qrVideo.videoWidth;
+      qrOverlay.height = qrVideo.videoHeight;
+      qrOverlayCtx.clearRect(0, 0, qrOverlay.width, qrOverlay.height);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = qrVideo.videoWidth;
+      canvas.height = qrVideo.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(qrVideo, 0, 0);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, canvas.width, canvas.height);
+
+      if (code && isQRInScanFrame(code.location, canvas.width, canvas.height)) {
+        const { topLeftCorner, bottomRightCorner } = code.location;
+        qrOverlayCtx.strokeStyle = 'lime';
+        qrOverlayCtx.lineWidth = 4;
+        qrOverlayCtx.strokeRect(
+          topLeftCorner.x,
+          topLeftCorner.y,
+          bottomRightCorner.x - topLeftCorner.x,
+          bottomRightCorner.y - topLeftCorner.y
+        );
+
+        if (!autoScanTimeout) {
+          autoScanTimeout = setTimeout(() => {
+            qrVideo.srcObject.getTracks().forEach(track => track.stop());
+            scanning = false;
+            const price = prompt("QR detected. Enter the price (e.g. 9.50):");
+            if (price !== null) {
+              overlayTextAndSave(`${code.data} | $${price}`);
+            }
+          }, 1000);
+        }
+      } else {
+        clearTimeout(autoScanTimeout);
+        autoScanTimeout = null;
+      }
+
+      animationId = requestAnimationFrame(scanLoop);
     }
 
     function captureQRFrame() {
@@ -106,18 +210,19 @@
       qrCanvas.height = qrVideo.videoHeight;
       const ctx = qrCanvas.getContext('2d');
       ctx.drawImage(qrVideo, 0, 0);
+
       const imageData = ctx.getImageData(0, 0, qrCanvas.width, qrCanvas.height);
       const code = jsQR(imageData.data, qrCanvas.width, qrCanvas.height);
 
-      if (code) {
+      if (code && isQRInScanFrame(code.location, qrCanvas.width, qrCanvas.height)) {
         qrVideo.srcObject.getTracks().forEach(track => track.stop());
-        const qrData = code.data;
-        const price = prompt("QR detected. Enter the price (e.g. 9.50):");
+        scanning = false;
+        const price = prompt("Enter the price (e.g. 9.50):");
         if (price !== null) {
-          overlayTextAndSave(`${qrData} | $${price}`);
+          overlayTextAndSave(`${code.data} | $${price}`);
         }
       } else {
-        alert('No QR code found — try again.');
+        alert('No QR code inside the red box — try again.');
       }
     }
 
@@ -127,6 +232,7 @@
       processingCanvas.width = width;
       processingCanvas.height = height;
       processingCtx.drawImage(capturedImageBitmap, 0, 0);
+
       processingCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
       processingCtx.fillRect(0, height - 40, width, 40);
       processingCtx.font = '24px sans-serif';
@@ -135,12 +241,27 @@
       processingCtx.fillText(text, width / 2, height - 10);
 
       processingCanvas.toBlob(blob => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = 'product_with_qr_price.jpg';
-        a.click();
-        initPhotoScreen();
+        const file = new File([blob], 'product_with_qr_price.jpg', { type: 'image/jpeg' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          navigator.share({
+            files: [file],
+            title: 'Product Image',
+            text: 'Photo with QR and price'
+          }).then(() => initPhotoScreen())
+            .catch(() => downloadBlob(blob));
+        } else {
+          downloadBlob(blob);
+        }
       }, 'image/jpeg', 0.95);
+    }
+
+    function downloadBlob(blob) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'product_with_qr_price.jpg';
+      a.click();
+      initPhotoScreen();
     }
   </script>
 </body>
