@@ -74,6 +74,7 @@
       <div class="scan-frame"></div>
     </div>
     <button onclick="captureQRFrame()">Scan QR Now</button>
+    <button onclick="refocusCamera()">🔁 Refocus Camera</button>
     <p>Align QR code inside the red box</p>
   </div>
 
@@ -133,16 +134,29 @@
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       qrVideo.srcObject = stream;
 
-      // Apply zoom if supported
       const [track] = stream.getVideoTracks();
       const capabilities = track.getCapabilities();
+
+      // Optional: Apply zoom
       if (capabilities.zoom) {
         const zoomVal = capabilities.zoom.max > 2 ? 2 : capabilities.zoom.max;
         await track.applyConstraints({ advanced: [{ zoom: zoomVal }] });
       }
 
+      // Optional: Try continuous focus (safe for iOS)
+      if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      }
+
       scanning = true;
       scanLoop();
+    }
+
+    function refocusCamera() {
+      if (qrVideo.srcObject) {
+        qrVideo.srcObject.getTracks().forEach(track => track.stop());
+      }
+      startQRScan();
     }
 
     function isQRInScanFrame(location, width, height) {
